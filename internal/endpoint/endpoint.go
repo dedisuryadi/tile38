@@ -37,6 +37,8 @@ const (
 	SQS = Protocol("sqs")
 	// NATS protocol
 	NATS = Protocol("nats")
+	// NSQ protocol
+	NSQ = Protocol("nsq")
 )
 
 // Endpoint represents an endpoint.
@@ -103,6 +105,11 @@ type Endpoint struct {
 		Port  int
 		User  string
 		Pass  string
+		Topic string
+	}
+	NSQ struct {
+		Host  string
+		Port  int
 		Topic string
 	}
 	Local struct {
@@ -187,6 +194,8 @@ func (epc *Manager) Send(endpoint, msg string) error {
 				conn = newSQSConn(ep)
 			case NATS:
 				conn = newNATSConn(ep)
+			case NSQ:
+				conn = newNSQConn(ep)
 			case Local:
 				conn = newLocalConn(ep, epc.publisher)
 			}
@@ -242,6 +251,8 @@ func parseEndpoint(s string) (Endpoint, error) {
 		endpoint.Protocol = SQS
 	case strings.HasPrefix(s, "nats:"):
 		endpoint.Protocol = NATS
+	case strings.HasPrefix(s, "nsq:"):
+		endpoint.Protocol = NSQ
 	}
 
 	s = s[strings.Index(s, ":")+1:]
@@ -659,6 +670,35 @@ func parseEndpoint(s string) (Endpoint, error) {
 				}
 			}
 		}
+	}
+
+	// Basic NSQ connection strings
+	// nsq://<host>:<port>/<topic_name>
+	//
+	if endpoint.Protocol == NSQ {
+		// Parsing connection from URL string
+		hp := strings.Split(s, ":")
+		switch len(hp) {
+		default:
+			return endpoint, errors.New("invalid NSQ url")
+		case 2:
+			port, err := strconv.Atoi(hp[1])
+			if err != nil {
+				endpoint.NSQ.Port = 4150 // default nsq port
+			} else {
+				endpoint.NSQ.Port = port
+			}
+		}
+
+		// Parsing NATS topic name
+		if len(sp) > 1 {
+			var err error
+			endpoint.NSQ.Topic, err = url.QueryUnescape(sp[1])
+			if err != nil {
+				return endpoint, errors.New("invalid NSQ topic name")
+			}
+		}
+
 	}
 
 	return endpoint, nil
